@@ -458,6 +458,58 @@ func TestAccComputeInstance_address_custom(t *testing.T) {
 		},
 	})
 }
+
+func TestAccComputeInstance_forceChangeMachineTypeManually(t *testing.T) {
+	var instanceName = "matthew-test" //fmt.Sprintf("instance-test-%s", acctest.RandString(10))
+	var instanceZone = "us-central1-a"
+	//Read in instanceZone from environment and leave us-central-1a as default
+
+	updateMachineType := func() {
+
+		config := testAccProvider.Meta().(*Config)
+
+		op, err := config.clientCompute.Instances.Stop(config.Project, instanceZone, instanceName).Do()
+		if err != nil {
+			t.Fatalf("Could not stop instance: %s", err)
+		}
+		err = computeOperationWaitZone(config, op, config.Project, instanceZone, "Waiting on stop")
+		if err != nil {
+			t.Fatalf("Could not stop instance: %s", err)
+		}
+
+		machineType := compute.InstancesSetMachineTypeRequest{
+			MachineType: "zones/us-central1-a/machineTypes/f1-micro",
+		}
+
+		op, err = config.clientCompute.Instances.SetMachineType(
+			config.Project, instanceZone, instanceName, &machineType).Do()
+		if err != nil {
+			t.Fatalf("Could not change machine type: %s", err)
+		}
+		err = computeOperationWaitZone(config, op, config.Project, instanceZone, "Waiting machine type change")
+		if err != nil {
+			t.Fatalf("Could not change machine type: %s", err)
+		}
+
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckComputeInstanceDestroy,
+		Steps: []resource.TestStep{
+			resource.TestStep{
+				Config: testAccComputeInstance_basic(instanceName),
+			},
+			resource.TestStep{
+				PreConfig:          updateMachineType,
+				Config:             testAccComputeInstance_basic(instanceName),
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
 func testAccCheckComputeInstanceDestroy(s *terraform.State) error {
 	config := testAccProvider.Meta().(*Config)
 
